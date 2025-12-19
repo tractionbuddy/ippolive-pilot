@@ -32,7 +32,13 @@
     <script type="text/babel">
         // 1. Initialize Gun (Connect to a public relay for testing)
         // In production, we will add more peers here.
-        const gun = Gun(['https://gun-manhattan.herokuapp.com/gun']);
+        // 1. Initialize Gun with multiple backup peers (The "Cluster")
+        const gun = Gun([
+            'https://gun-manhattan.herokuapp.com/gun', 
+            'https://gun-us.herokuapp.com/gun',
+            'https://gun-eu.herokuapp.com/gun',
+            'https://relay.peer.ooo/gun' 
+        ]);
         const user = gun.user();
 
         // 2. Main App Component
