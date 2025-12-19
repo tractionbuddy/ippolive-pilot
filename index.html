@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IppoLive - Hyperlocal Presence</title>
+    
+    <script src="https://unpkg.com/react@17/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gun/sea.js"></script>
+
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background-color: #f0f2f5; display: flex; justify-content: center; padding: 20px; }
+        .app-container { width: 100%; max-width: 400px; background: white; padding: 20px; border-radius: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: center; }
+        .status-btn { width: 200px; height: 200px; border-radius: 50%; border: none; font-size: 24px; font-weight: bold; cursor: pointer; transition: all 0.3s ease; margin: 20px auto; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+        .online { background-color: #4CAF50; color: white; } /* Green */
+        .offline { background-color: #f44336; color: white; } /* Red */
+        .header { margin-bottom: 20px; }
+        .user-id { font-size: 10px; color: #888; word-break: break-all; margin-top: 10px; }
+        .provider-list { text-align: left; margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px; }
+        .provider-item { background: #f9f9f9; padding: 10px; margin-bottom: 10px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .dot { height: 10px; width: 10px; border-radius: 50%; display: inline-block; }
+    </style>
+</head>
+<body>
+
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // 1. Initialize Gun (Connect to a public relay for testing)
+        // In production, we will add more peers here.
+        const gun = Gun(['https://gun-manhattan.herokuapp.com/gun']);
+        const user = gun.user();
+
+        // 2. Main App Component
+        function App() {
+            const [isLoggedIn, setIsLoggedIn] = React.useState(false);
+            const [myStatus, setMyStatus] = React.useState('offline'); // 'online' or 'offline'
+            const [pubKey, setPubKey] = React.useState('');
+            const [providers, setProviders] = React.useState({});
+
+            // Effect: Check if user is already logged in (Persistence)
+            React.useEffect(() => {
+                user.recall({sessionStorage: true}, (ack) => {
+                    if (ack && ack.sea) {
+                        setIsLoggedIn(true);
+                        setPubKey(ack.sea.pub);
+                    }
+                });
+
+                // LISTENER: Listen for updates from ALL providers in the mesh
+                gun.get('ippolive_global_v1').map().on((data, key) => {
+                    if(data) {
+                        setProviders(prev => ({...prev, [key]: data}));
+                    }
+                });
+            }, []);
+
+            // Action: Create Account / Login (Anonymous for now)
+            const login = () => {
+                // Generate a random pair for this session
+                const pair = Gun.SEA.pair((pair) => {
+                    user.auth(pair, () => {
+                        setIsLoggedIn(true);
+                        setPubKey(pair.pub);
+                        console.log("Logged in as:", pair.pub);
+                    });
+                });
+            };
+
+            // Action: Toggle Status (The "Giant Button")
+            const toggleStatus = () => {
+                const newStatus = myStatus === 'offline' ? 'online' : 'offline';
+                setMyStatus(newStatus);
+                
+                // Vibrate phone (Haptic Feedback)
+                if (navigator.vibrate) navigator.vibrate(50); 
+
+                // SAVE TO MESH: Update the global list
+                const timestamp = Date.now();
+                const data = { 
+                    status: newStatus, 
+                    lastUpdated: timestamp,
+                    name: "Doctor " + pubKey.substring(0, 4) // Simulating a name
+                };
+                
+                // Save to my user graph AND the global map
+                user.get('profile').put(data);
+                gun.get('ippolive_global_v1').get(pubKey).put(data);
+            };
+
+            return (
+                <div className="app-container">
+                    <div className="header">
+                        <h2>IppoLive Pilot</h2>
+                        {!isLoggedIn ? (
+                            <button onClick={login} style={{padding: '10px 20px', fontSize: '16px'}}>
+                                Start (I am a Provider)
+                            </button>
+                        ) : (
+                            <div>
+                                <p>You are the Provider</p>
+                                <div className="user-id">ID: {pubKey}</div>
+                            </div>
+                        )}
+                    </div>
+
+                    {isLoggedIn && (
+                        <div>
+                            {/* The GIANT TOGGLE BUTTON */}
+                            <button 
+                                className={`status-btn ${myStatus}`} 
+                                onClick={toggleStatus}
+                            >
+                                {myStatus === 'online' ? "I AM IN" : "I AM OUT"}
+                            </button>
+                            <p style={{color: '#666'}}>Tap to change availability</p>
+                        </div>
+                    )}
+
+                    {/* CONSUMER VIEW (List Mode) */}
+                    <div className="provider-list">
+                        <h3>Live Neighborhood Map</h3>
+                        {Object.keys(providers).length === 0 && <p>Scanning for doctors...</p>}
+                        
+                        {Object.keys(providers).map(key => {
+                            const p = providers[key];
+                            // Filter: Only show if updated recently (e.g., last 24h)
+                            // For demo, we show all.
+                            const isOnline = p.status === 'online';
+                            return (
+                                <div className="provider-item" key={key}>
+                                    <div>
+                                        <strong>{p.name || "Unknown"}</strong>
+                                        <div style={{fontSize: '12px', color: '#888'}}>
+                                            {new Date(p.lastUpdated).toLocaleTimeString()}
+                                        </div>
+                                    </div>
+                                    <div style={{display:'flex', alignItems:'center', gap:'5px'}}>
+                                        <span className="dot" style={{background: isOnline ? 'green' : 'red'}}></span>
+                                        {isOnline ? "OPEN" : "CLOSED"}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
