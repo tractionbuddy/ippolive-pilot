@@ -8,21 +8,20 @@
     <script src="https://unpkg.com/react@17/umd/react.development.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js" crossorigin></script>
     <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
-    
     <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/gun/sea.js"></script>
 
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background-color: #f0f2f5; display: flex; justify-content: center; padding: 20px; margin: 0; }
-        .app-container { width: 100%; max-width: 400px; background: white; padding: 20px; border-radius: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: center; margin-top: 20px; }
-        .status-btn { width: 200px; height: 200px; border-radius: 50%; border: none; font-size: 24px; font-weight: bold; cursor: pointer; transition: all 0.3s ease; margin: 20px auto; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
-        .online { background-color: #4CAF50; color: white; } /* Green */
-        .offline { background-color: #f44336; color: white; } /* Red */
-        .header { margin-bottom: 20px; }
-        .user-id { font-size: 10px; color: #888; word-break: break-all; margin-top: 10px; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; display: flex; justify-content: center; }
+        .app-container { width: 100%; max-width: 400px; background: white; padding: 20px; border-radius: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: center; }
+        .status-btn { width: 200px; height: 200px; border-radius: 50%; border: none; font-size: 24px; font-weight: bold; cursor: pointer; transition: transform 0.2s; margin: 20px auto; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+        .status-btn:active { transform: scale(0.95); }
+        .online { background-color: #4CAF50; color: white; }
+        .offline { background-color: #f44336; color: white; }
         .provider-list { text-align: left; margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px; }
-        .provider-item { background: #f9f9f9; padding: 10px; margin-bottom: 10px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; }
-        .dot { height: 10px; width: 10px; border-radius: 50%; display: inline-block; }
+        .provider-item { background: #f9f9f9; padding: 12px; margin-bottom: 10px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .dot { height: 10px; width: 10px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+        .network-status { font-size: 11px; color: #888; margin-bottom: 15px; padding: 5px; background: #eee; border-radius: 4px; display: inline-block;}
     </style>
 </head>
 <body>
@@ -30,28 +29,30 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        
-        // 1. Initialize Gun with a Robust Peer Cluster
-        const gun = Gun([
+        // 1. ROBUST PEER LIST (Trying more options)
+        const PEERS = [
             'https://gun-manhattan.herokuapp.com/gun',
             'https://gun-us.herokuapp.com/gun',
             'https://gun-eu.herokuapp.com/gun',
-            'https://relay.peer.ooo/gun'
-        ]);
-        
-        // GLOBAL USER VARIABLE
-        const user = gun.user();
+            'https://plato.design/gun',
+            'https://peer.wallie.io/gun'
+        ];
 
-        // 2. Main App Component
+        const gun = Gun({ peers: PEERS });
+        const user = gun.user();
+        
+        // Use a unique App ID so we don't get junk data from others
+        const APP_ID = 'ippolive_pilot_v1_2'; 
+
         function App() {
             const [isLoggedIn, setIsLoggedIn] = React.useState(false);
-            const [myStatus, setMyStatus] = React.useState('offline'); 
+            const [myStatus, setMyStatus] = React.useState('offline');
             const [pubKey, setPubKey] = React.useState('');
             const [providers, setProviders] = React.useState({});
+            const [peersConnected, setPeersConnected] = React.useState(0);
 
-            // Effect: Check Login & Listen for Data
             React.useEffect(() => {
-                // Persistent Login Check
+                // LOGIN CHECK
                 user.recall({sessionStorage: true}, (ack) => {
                     if (ack && ack.sea) {
                         setIsLoggedIn(true);
@@ -59,15 +60,22 @@
                     }
                 });
 
-                // GLOBAL LISTENER: Listen for updates from the mesh
-                gun.get('ippolive_global_v1').map().on((data, key) => {
+                // CONNECTION MONITOR (Visual Feedback)
+                // This counts how many relays we are successfully talking to
+                setInterval(() => {
+                    // Gun internal hack to count connected peers
+                    const count = Object.keys(gun._.opt.peers).filter(k => gun._.opt.peers[k].wire && gun._.opt.peers[k].wire.readyState === 1).length;
+                    setPeersConnected(count);
+                }, 2000);
+
+                // DATA LISTENER
+                gun.get(APP_ID).map().on((data, key) => {
                     if(data) {
                         setProviders(prev => ({...prev, [key]: data}));
                     }
                 });
             }, []);
 
-            // Action: Login (Anonymous)
             const login = () => {
                 const pair = Gun.SEA.pair((pair) => {
                     user.auth(pair, () => {
@@ -77,63 +85,56 @@
                 });
             };
 
-            // Action: Toggle Status
             const toggleStatus = () => {
                 const newStatus = myStatus === 'offline' ? 'online' : 'offline';
                 setMyStatus(newStatus);
                 if (navigator.vibrate) navigator.vibrate(50); 
 
-                const timestamp = Date.now();
                 const data = { 
                     status: newStatus, 
-                    lastUpdated: timestamp,
-                    name: "Doctor " + (pubKey ? pubKey.substring(0, 4) : "Anon")
+                    lastUpdated: Date.now(),
+                    name: "Dr. " + (pubKey ? pubKey.substring(0, 4) : "User")
                 };
                 
-                // Save to Graph
                 user.get('profile').put(data);
-                gun.get('ippolive_global_v1').get(pubKey).put(data);
+                gun.get(APP_ID).get(pubKey).put(data);
             };
 
             return (
                 <div className="app-container">
-                    <div className="header">
-                        <h2>IppoLive Pilot</h2>
-                        {!isLoggedIn ? (
-                            <button onClick={login} style={{padding: '10px 20px', fontSize: '16px'}}>
-                                Start (I am a Provider)
-                            </button>
-                        ) : (
-                            <div>
-                                <p>You are the Provider</p>
-                                <div className="user-id">ID: {pubKey ? pubKey.substring(0, 10) : "..."}...</div>
-                            </div>
-                        )}
+                    <h2>IppoLive Pilot v1.2</h2>
+                    
+                    {/* NETWORK MONITOR */}
+                    <div className="network-status">
+                        {peersConnected > 0 
+                            ? <span style={{color:'green'}}>● Connected to {peersConnected} Relay(s)</span> 
+                            : <span style={{color:'orange'}}>● Searching for Signal...</span>}
                     </div>
 
-                    {isLoggedIn && (
+                    {!isLoggedIn ? (
+                        <div style={{marginTop: '20px'}}>
+                            <p>Are you a Service Provider?</p>
+                            <button onClick={login} style={{padding: '12px 24px', fontSize: '16px', background: '#007bff', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer'}}>
+                                Initialize My Node
+                            </button>
+                        </div>
+                    ) : (
                         <div>
-                            <button 
-                                className={`status-btn ${myStatus}`} 
-                                onClick={toggleStatus}
-                            >
+                            <div style={{fontSize: '10px', color: '#aaa', margin: '10px 0'}}>Node ID: {pubKey.substring(0, 12)}...</div>
+                            <button className={`status-btn ${myStatus}`} onClick={toggleStatus}>
                                 {myStatus === 'online' ? "I AM IN" : "I AM OUT"}
                             </button>
-                            <p style={{color: '#666'}}>Tap to change availability</p>
                         </div>
                     )}
 
-                    {/* CONSUMER VIEW (Smart List) */}
                     <div className="provider-list">
-                        <h3>Live Neighborhood Map</h3>
-                        {Object.keys(providers).length === 0 && <p>Scanning for doctors...</p>}
+                        <h3>Live Neighborhood</h3>
+                        {Object.keys(providers).length === 0 && <p style={{color:'#999'}}>Scanning mesh network...</p>}
                         
                         {Object.keys(providers).map(key => {
                             const p = providers[key];
-                            // DEAD MAN'S SWITCH: 10 mins threshold
-                            const now = Date.now();
-                            const diff = now - (p.lastUpdated || 0);
-                            const isStale = diff > 600000; 
+                            // Dead Man Switch: 10 mins
+                            const isStale = (Date.now() - p.lastUpdated) > 600000; 
                             const isOnline = !isStale && p.status === 'online';
 
                             return (
@@ -141,14 +142,13 @@
                                     <div>
                                         <strong>{p.name || "Unknown"}</strong>
                                         <div style={{fontSize: '12px', color: '#888'}}>
-                                            {isStale ? "⚠️ Signal Lost: " : "Updated: "}
-                                            {p.lastUpdated ? new Date(p.lastUpdated).toLocaleTimeString() : "Never"}
+                                            {isStale ? "⚠️ Signal Lost" : new Date(p.lastUpdated).toLocaleTimeString()}
                                         </div>
                                     </div>
-                                    <div style={{display:'flex', alignItems:'center', gap:'5px'}}>
+                                    <div style={{display:'flex', alignItems:'center'}}>
                                         <span className="dot" style={{background: isStale ? 'grey' : (isOnline ? '#4CAF50' : '#f44336')}}></span>
-                                        <span style={{fontWeight: 'bold', color: isStale ? 'grey' : (isOnline ? '#4CAF50' : '#f44336')}}>
-                                            {isStale ? "UNKNOWN" : (isOnline ? "OPEN" : "CLOSED")}
+                                        <span style={{fontWeight: 'bold', fontSize:'14px', color: isStale ? 'grey' : (isOnline ? '#4CAF50' : '#f44336')}}>
+                                            {isStale ? "?" : (isOnline ? "OPEN" : "CLOSED")}
                                         </span>
                                     </div>
                                 </div>
