@@ -1,6 +1,37 @@
-<script type="text/babel">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IppoLive - Hyperlocal Presence</title>
+    
+    <script src="https://unpkg.com/react@17/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gun/sea.js"></script>
+
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background-color: #f0f2f5; display: flex; justify-content: center; padding: 20px; margin: 0; }
+        .app-container { width: 100%; max-width: 400px; background: white; padding: 20px; border-radius: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: center; margin-top: 20px; }
+        .status-btn { width: 200px; height: 200px; border-radius: 50%; border: none; font-size: 24px; font-weight: bold; cursor: pointer; transition: all 0.3s ease; margin: 20px auto; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+        .online { background-color: #4CAF50; color: white; } /* Green */
+        .offline { background-color: #f44336; color: white; } /* Red */
+        .header { margin-bottom: 20px; }
+        .user-id { font-size: 10px; color: #888; word-break: break-all; margin-top: 10px; }
+        .provider-list { text-align: left; margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px; }
+        .provider-item { background: #f9f9f9; padding: 10px; margin-bottom: 10px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .dot { height: 10px; width: 10px; border-radius: 50%; display: inline-block; }
+    </style>
+</head>
+<body>
+
+    <div id="root"></div>
+
+    <script type="text/babel">
+        
         // 1. Initialize Gun with a Robust Peer Cluster
-        // We use multiple peers so if one is "sleeping", others can take over.
         const gun = Gun([
             'https://gun-manhattan.herokuapp.com/gun',
             'https://gun-us.herokuapp.com/gun',
@@ -8,7 +39,7 @@
             'https://relay.peer.ooo/gun'
         ]);
         
-        // GLOBAL USER VARIABLE (Declared only once)
+        // GLOBAL USER VARIABLE
         const user = gun.user();
 
         // 2. Main App Component
@@ -17,7 +48,6 @@
             const [myStatus, setMyStatus] = React.useState('offline'); 
             const [pubKey, setPubKey] = React.useState('');
             const [providers, setProviders] = React.useState({});
-            const [lastPing, setLastPing] = React.useState(Date.now());
 
             // Effect: Check Login & Listen for Data
             React.useEffect(() => {
@@ -131,3 +161,5 @@
 
         ReactDOM.render(<App />, document.getElementById('root'));
     </script>
+</body>
+</html>
